@@ -71,6 +71,7 @@
 #define SCL 9
 #define SPEED 400000
 #define TIMECUTOFF 30000
+#define TIMECUTOFF2 60000 /* 1 min apos ligado*/
 
 // MRD PERIFERICOS
 void updateSensorValue();
@@ -91,6 +92,8 @@ uint32_t time_t_ejected = 0;
 uint32_t time_t_ejected_start = 0;
 uint32_t time_t_off = 0;
 uint32_t time_t_off_start = 0;
+uint32_t time_t_off2 = 0;
+uint32_t time_t_off2_start = 0;
 bool time_t_off_flag = false;
 bool timeStart_init;
 bool noWifiMore = false;
@@ -107,9 +110,10 @@ bool readSensor = false;
 #define MQTT_DO_NOT_RETAIN_MSG  0
 
 /* --- Time and NTP Settings --- */
-#define NTP_SERVERS "pool.ntp.org", "time.nist.gov"
+//#define NTP_SERVERS "pool.ntp.org", "time.nist.gov"
+#define NTP_SERVERS "a.st1.ntp.br", "a.ntp.br"
 
-#define PST_TIME_ZONE -8
+#define PST_TIME_ZONE -3
 #define PST_TIME_ZONE_DAYLIGHT_SAVINGS_DIFF   1
 
 #define GMT_OFFSET_SECS (PST_TIME_ZONE * 3600)
@@ -421,6 +425,7 @@ void setup()
   azure_iot_start(&azure_iot);
 
   LogInfo("Azure IoT client initialized (state=%d)", azure_iot.state);
+  time_t_off2_start = millis();
 }
 
 // MRD Functions
@@ -641,7 +646,7 @@ void activeEject()
       timeStart_init = true;
       time_t_off_flag = false;
       time_t_ejected_start = millis();
-      Serial.println("EJETANDO");
+      //Serial.println("EJETANDO");
       eject = true;
     }
   }
@@ -649,11 +654,12 @@ void activeEject()
   {
     if (eject)
     {
-      Serial.println("EJETANDO_FIM");
+      //Serial.println("EJETANDO_FIM");
       Serial1.write(ReadSimgle, 7);
       startReadRF = true;
       time_t_off_flag = true;
       time_t_off_start = millis();
+      time_t_off2_start = millis();
       uint8_t cont = 5;
       bool ledOnOff;
       digitalWrite(IO_PUMP, 0);
@@ -700,13 +706,17 @@ void timeCount()
   } else {
     time_t_off = 0;
   }
+  time_t_off2 = millis() - time_t_off2_start;
 };
 
 void manterLigado()
 {
-  if (time_t_off>TIMECUTOFF) {
+  if (time_t_off > TIMECUTOFF || time_t_off2 > TIMECUTOFF2)
+  {
     digitalWrite(IO_HOLD_UP,0);
-  } else {
+  }
+  else
+  {
     digitalWrite(IO_HOLD_UP,1);
   }
 }
@@ -728,6 +738,7 @@ void loop()
   else if (WiFi.status() == WL_CONNECTED)
   {
     sync_device_clock_with_ntp_server();
+
     switch(azure_iot_get_status(&azure_iot))
     {
       case azure_iot_connected:
@@ -774,9 +785,15 @@ static void sync_device_clock_with_ntp_server()
   int8_t tentat_l = 10;
   while (now < UNIX_TIME_NOV_13_2017 && tentat_l--)
   {
+    delay(500);
+    Serial.print(".");
     now = time(NULL);
   }
-  LogInfo("Time initialized!");
+  if(tentat_l<=0) {
+    LogInfo("FAIL TIME");
+  } else {
+    LogInfo("Time initialized!");
+  }
   timeNTPInit = true;
 }
 
@@ -785,22 +802,22 @@ static void connect_to_wifi()
 {
   if(noWifiMore) return;
 
-  LogInfo("Connecting to WIFI wifi_ssid %s", serverhtml.confWifi.ssid);
-  LogInfo("Connecting to WIFI pass %s", serverhtml.confWifi.password);
+  //LogInfo("Connecting to WIFI wifi_ssid %s", serverhtml.confWifi.ssid);
+  //LogInfo("Connecting to WIFI pass %s", serverhtml.confWifi.password);
   //Serial.println(serverhtml.confWifi.password);
 
   WiFi.mode(WIFI_STA);
   WiFi.begin(serverhtml.confWifi.ssid, serverhtml.confWifi.password); // serverhtml.confWifi.password
   if (WiFi.status() != WL_CONNECTED && tentativas--)
   {
-    delay(500);
+    delay(1000);
   }
   if (tentativas <= 0) {
     Serial.println("FAIL CONNECT WIFI ");
     noWifiMore = true;
+  } else {
+    LogInfo("WiFi connected, IP address: %s", WiFi.localIP().toString().c_str());
   }
-
-  LogInfo("WiFi connected, IP address: %s", WiFi.localIP().toString().c_str());
 }
 
 static esp_err_t esp_mqtt_event_handler(esp_mqtt_event_handle_t event)
