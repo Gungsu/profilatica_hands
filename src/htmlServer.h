@@ -22,7 +22,7 @@ typedef struct
     uint16_t refil_vol;
     uint16_t refil_vol_rest;
     float calib_val;
-    uint16_t confml;
+    float confml;
     uint16_t result_calib_vol;
     uint16_t m_act_dist;
 } ST_Refil;
@@ -41,7 +41,8 @@ enum
     en_CMD_help,
     en_CMD_m_act_dist,
     en_CMD_confml,
-    en_CMD_reset_refil
+    en_CMD_reset_refil,
+    en_CMD_FW
 } COMMANDS;
 
 class HTML_SERVER {

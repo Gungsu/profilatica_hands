@@ -65,7 +65,7 @@ void HTML_SERVER::deserializeJson(fs::FS &fs, const char *path)
                 confEq.calib_val = atof(parte2.c_str());
             }
             else if(parte1 == "confml") {
-                confEq.confml = atoi(parte2.c_str());
+                confEq.confml = atof(parte2.c_str());
             }
             else if (parte1 == "dps_id_scope")
             {

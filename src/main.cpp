@@ -63,15 +63,16 @@
 
 // MRD DEFINES
 // led_defines in htmlServer
+#define BAT_TEST_MODE 1  //1 - ON / 0 - OFF
 #define IO_PUMP 10
-#define IO_HOLD_UP 3
-#define IO_RX 0
-#define IO_TX 1
+#define IO_HOLD_UP 4
 #define SDA 8
 #define SCL 9
 #define SPEED 400000
 #define TIMECUTOFF 30000
 #define TIMECUTOFF2 60000 /* 1 min apos ligado*/
+
+//#define DEBUGWITHOUTINTERNET 1
 
 // MRD PERIFERICOS
 void updateSensorValue();
@@ -95,18 +96,20 @@ uint32_t time_t_off_start = 0;
 uint32_t time_t_off2 = 0;
 uint32_t time_t_off2_start = 0;
 bool time_t_off_flag = false;
-bool timeStart_init;
+bool timeStart_init = false;
 bool noWifiMore = false;
 float volumDisp;
-String tagRead;
+String tagRead = "testBateria_2";
 char serialReadBuff[256];
 
 bool enviarAzure = false;
 
 bool readSensor = false;
 
+bool waitConfs = false;
+
 /* --- Sample-specific Settings --- */
-#define SERIAL_LOGGER_BAUD_RATE 115200
+#define SERIAL_LOGGER_BAUD_RATE 9600
 #define MQTT_DO_NOT_RETAIN_MSG  0
 
 /* --- Time and NTP Settings --- */
@@ -370,7 +373,8 @@ az_span convert_str(String value)
 void setup()
 {
   Serial.begin(SERIAL_LOGGER_BAUD_RATE);
-  Serial1.begin(115200, SERIAL_8N1, IO_RX, IO_TX);
+  //Serial.println("STARTING");
+  //Serial1.begin(115200, SERIAL_8N1, IO_RX, IO_TX);
   
   set_logging_function(logging_function);
 
@@ -379,53 +383,72 @@ void setup()
   pinMode(IO_externalLED, OUTPUT);
 
   digitalWrite(IO_HOLD_UP,1);
+  delay(500);
   initSensors();
 
-  while (distanceSensor.begin(Wire) != 0) // Begin returns 0 on a good init
-  {
+  #ifdef DEBUGWITHOUTINTERNET
+    waitConfs = true;
+    
+  #else
+    /*while (distanceSensor.begin(Wire) != 0) // Begin returns 0 on a good init
+    {
       Serial.print("E1");
-  }
+    }*/
+    
+  #endif
+
   serverhtml.readConfs();
+  if (serverhtml.confWifi.ssid == "" || serverhtml.confWifi.password == "" || serverhtml.confWifi.iot_conf_dkey == "" || serverhtml.confWifi.dps_id_scope == "" || serverhtml.confWifi.iot_conf_dID == "")
+  {
+    waitConfs = true;
+  }
+  if(waitConfs) {
+    return;
+  }
+  serverhtml.confEq.result_calib_vol = serverhtml.confEq.confml * 1000 * serverhtml.confEq.calib_val;
 
   connect_to_wifi();
-
+  //Serial.println("Point A");
   azure_pnp_init();
-
+  //Serial.println("Point B");
+  
   /*
   * The configuration structure used by Azure IoT must remain unchanged (including data buffer) 
   * throughout the lifetime of the sample. This variable must also not lose context so other
   * components do not overwrite any information within this structure.
   */
-  azure_iot_config.user_agent = AZ_SPAN_FROM_STR(AZURE_SDK_CLIENT_USER_AGENT);
-  azure_iot_config.model_id = azure_pnp_get_model_id();
-  azure_iot_config.use_device_provisioning = true; // Required for Azure IoT Central.
-  azure_iot_config.iot_hub_fqdn = AZ_SPAN_EMPTY;
-  azure_iot_config.device_id = AZ_SPAN_EMPTY;
-
-  azure_iot_config.device_certificate = AZ_SPAN_EMPTY;
-  azure_iot_config.device_certificate_private_key = AZ_SPAN_EMPTY;
-  azure_iot_config.device_key = convert_str(serverhtml.confWifi.iot_conf_dkey);
-
-  azure_iot_config.dps_id_scope = convert_str(serverhtml.confWifi.dps_id_scope);
-  azure_iot_config.dps_registration_id = convert_str(serverhtml.confWifi.iot_conf_dID); // Use Device ID for Azure IoT Central.
-  azure_iot_config.data_buffer = AZ_SPAN_FROM_BUFFER(az_iot_data_buffer);
-  azure_iot_config.sas_token_lifetime_in_minutes = MQTT_PASSWORD_LIFETIME_IN_MINUTES;
-  azure_iot_config.mqtt_client_interface.mqtt_client_init = mqtt_client_init_function;
-  azure_iot_config.mqtt_client_interface.mqtt_client_deinit = mqtt_client_deinit_function;
-  azure_iot_config.mqtt_client_interface.mqtt_client_subscribe = mqtt_client_subscribe_function;
-  azure_iot_config.mqtt_client_interface.mqtt_client_publish = mqtt_client_publish_function;
-  azure_iot_config.data_manipulation_functions.hmac_sha256_encrypt = mbedtls_hmac_sha256;
-  azure_iot_config.data_manipulation_functions.base64_decode = base64_decode;
-  azure_iot_config.data_manipulation_functions.base64_encode = base64_encode;
-  azure_iot_config.on_properties_update_completed = on_properties_update_completed;
-  azure_iot_config.on_properties_received = on_properties_received;
-  azure_iot_config.on_command_request_received = on_command_request_received;
-
-  azure_iot_init(&azure_iot, &azure_iot_config);
-  azure_iot_start(&azure_iot);
+ azure_iot_config.user_agent = AZ_SPAN_FROM_STR(AZURE_SDK_CLIENT_USER_AGENT);
+ azure_iot_config.model_id = azure_pnp_get_model_id();
+ azure_iot_config.use_device_provisioning = true; // Required for Azure IoT Central.
+ azure_iot_config.iot_hub_fqdn = AZ_SPAN_EMPTY;
+ azure_iot_config.device_id = AZ_SPAN_EMPTY;
+ 
+ azure_iot_config.device_certificate = AZ_SPAN_EMPTY;
+ azure_iot_config.device_certificate_private_key = AZ_SPAN_EMPTY;
+ azure_iot_config.device_key = convert_str(serverhtml.confWifi.iot_conf_dkey);
+ 
+ azure_iot_config.dps_id_scope = convert_str(serverhtml.confWifi.dps_id_scope);
+ azure_iot_config.dps_registration_id = convert_str(serverhtml.confWifi.iot_conf_dID); // Use Device ID for Azure IoT Central.
+ azure_iot_config.data_buffer = AZ_SPAN_FROM_BUFFER(az_iot_data_buffer);
+ azure_iot_config.sas_token_lifetime_in_minutes = MQTT_PASSWORD_LIFETIME_IN_MINUTES;
+ azure_iot_config.mqtt_client_interface.mqtt_client_init = mqtt_client_init_function;
+ azure_iot_config.mqtt_client_interface.mqtt_client_deinit = mqtt_client_deinit_function;
+ azure_iot_config.mqtt_client_interface.mqtt_client_subscribe = mqtt_client_subscribe_function;
+ azure_iot_config.mqtt_client_interface.mqtt_client_publish = mqtt_client_publish_function;
+ azure_iot_config.data_manipulation_functions.hmac_sha256_encrypt = mbedtls_hmac_sha256;
+ azure_iot_config.data_manipulation_functions.base64_decode = base64_decode;
+ azure_iot_config.data_manipulation_functions.base64_encode = base64_encode;
+ azure_iot_config.on_properties_update_completed = on_properties_update_completed;
+ azure_iot_config.on_properties_received = on_properties_received;
+ azure_iot_config.on_command_request_received = on_command_request_received;
+ 
+ azure_iot_init(&azure_iot, &azure_iot_config);
+ azure_iot_start(&azure_iot);
 
   LogInfo("Azure IoT client initialized (state=%d)", azure_iot.state);
+  
   time_t_off2_start = millis();
+  Serial.println("SETUP END");
 }
 
 // MRD Functions
@@ -437,17 +460,20 @@ String uint8ToHex(uint8_t value)
 }
 
 uint8_t x = 0;
+bool intbyF = false;
 void serialRead() {
   uint8_t endPos = 0;
   bool startRead = false;
   if (Serial.available()>0) {
     char r = Serial.read();
-    if(r=='{'){
+    if(r=='{' || (r=='F' && !intbyF)) {
       x = 0;
+      intbyF = true;
     }
-    if(r=='}') {
+    if(r=='}' || r=='\n') {
       endPos = x;
       startRead = true;
+      intbyF = false;
     }
     serialReadBuff[x] = r;
     x++;
@@ -462,11 +488,16 @@ void serialRead() {
   int8_t pos = result.indexOf(':');
   String parte1 = result.substring(2, pos - 1);
   String parte2 = result.substring(pos + 2, endPos-1);
+  if (parte1 == "W") {
+    parte1 = "FW";
+    //parte2 = "R";
+  }
+  Serial.println("CMD: " + parte1 + " " + parte2 + " ");
   commandFromSerial0(parte1,parte2);
 }
 
 void commandFromSerial0(String cmd,String value) {
-  String cmdList[] = {"ssid", "pass", "reset", "readConfs", "calib", "refil", "dps_id_scope", "iot_conf_did", "iot_conf_dkey", "help", "m_act_dist", "confml", "reset_refil"};
+  String cmdList[] = {"ssid", "pass", "reset", "readConfs", "calib", "refil", "dps_id_scope", "iot_conf_did", "iot_conf_dkey", "help", "m_act_dist", "confml", "reset_refil", "FW"};
   int numeroDeElementos = sizeof(cmdList) / sizeof(cmdList[0]);
   uint8_t co = 0;
   uint8_t cmdN = 245;
@@ -505,7 +536,7 @@ void commandFromSerial0(String cmd,String value) {
     serverhtml.confEq.calib_val = atof(value.c_str());
     Serial.print("\n--- Calib: ");
     Serial.println(value.c_str());
-    serverhtml.confEq.result_calib_vol = serverhtml.confEq.confml * serverhtml.confEq.calib_val;
+    serverhtml.confEq.result_calib_vol = serverhtml.confEq.confml * 1000 * serverhtml.confEq.calib_val;
     break;
   case en_CMD_SETREFIL:
     serverhtml.confEq.refil_vol = atoi(value.c_str());
@@ -544,10 +575,10 @@ void commandFromSerial0(String cmd,String value) {
     Serial.println(serverhtml.confEq.m_act_dist);
     break;
   case en_CMD_confml:
-    serverhtml.confEq.confml = atoi(value.c_str());
+    serverhtml.confEq.confml = atof(value.c_str());
     Serial.print("\n--- confml: ");
     Serial.println(serverhtml.confEq.confml);
-    serverhtml.confEq.result_calib_vol = serverhtml.confEq.confml * serverhtml.confEq.calib_val;
+    serverhtml.confEq.result_calib_vol = serverhtml.confEq.confml * 1000 * serverhtml.confEq.calib_val;
     break;
   case en_CMD_reset_refil:
     serverhtml.confEq.refil_vol_rest = serverhtml.confEq.refil_vol;
@@ -555,66 +586,38 @@ void commandFromSerial0(String cmd,String value) {
     Serial.println(serverhtml.confEq.refil_vol_rest);
     serverhtml.saveConfs();
     break;
+  case en_CMD_FW: //FW: 82
+    if (value == "S") {
+      Serial.println("NP:HANDS11");
+      Serial.printf("NS:%s\n", serverhtml.confWifi.dps_id_scope.c_str());
+      Serial.printf("L1:%s\n", serverhtml.confWifi.iot_conf_dID.c_str());
+      Serial.printf("L2:%s\n", serverhtml.confWifi.iot_conf_dkey.c_str());
+      Serial.printf("L3:%s\n", serverhtml.confWifi.ssid.c_str());
+      Serial.printf("P3:%s\n", serverhtml.confWifi.password.c_str());
+      Serial.print("P1:");
+      int c = serverhtml.confEq.confml*10;
+      Serial.write(c);
+      Serial.write('\n');
+      Serial.printf("C1:");
+      c = serverhtml.confEq.calib_val*10;
+      Serial.write(c);
+      Serial.write('\n');
+    } else {
+      serverhtml.saveConfs();
+      Serial.println("Reset");
+      delay(3000);
+      //ESP.restart();
+    }
+    break;
   default:
     Serial.println("\n--- COMANDO N RECONHECIDO ");
     break;
   }
 }
 
-bool startReadRF = false;
-void serial1Read()
-{
-  bool newRead = false;
-  bool startSave = false;
-  bool waitDD = false;
-  uint16_t contHere = 0;
-  uint8_t buff[25];
-  //tagRead = "";
-  if (Serial1.available() > 0 && startReadRF)
-  {
-    while (Serial1.available() && contHere < 25)
-    {
-      char x = Serial1.read();
-      if (startSave)
-      {
-        buff[contHere] = x;
-      }
-      if (x == 0xAA && contHere == 0)
-      {
-        buff[contHere] = x;
-        startSave = true;
-      }
-      if (startSave && buff[1] == 0x02)
-      {
-        waitDD = true;
-      }
-      if (buff[contHere] == 0xDD && waitDD && startSave)
-      {
-        uint8_t nCont = 8;
-        tagRead = "";
-        while (nCont <= 19)
-        {
-          tagRead += uint8ToHex(buff[nCont]);
-          nCont++;
-        }
-        startReadRF = false;
-        enviarAzure = true;
-        //Serial.print(tagRead);
-        //Serial.println();
-      }
-      contHere++;
-      // Serial.print("c");
-    }
-    // Serial.println("EW");
-    if (!waitDD)
-    {
-      Serial1.write(ReadSimgle, 7);
-    }
-  }
-}
-
 void updateSensorValue()
 {
+  #ifndef BAT_TEST_MODE
   if (!readSensor)
   {
     distanceSensor.startRanging();
@@ -633,42 +636,59 @@ void updateSensorValue()
   } else {
     digitalWrite(IO_externalLED, 0);
   }
+  #else
+    valueSensor_mm = 10;
+#endif
   //Serial.print(".");
   //Serial.println(valueSensor_mm);
 };
 
+bool oneEject = false;
 void activeEject()
 {
   if (valueSensor_mm < serverhtml.confEq.m_act_dist && time_t_ejected < serverhtml.confEq.result_calib_vol)
   {
-    if (!timeStart_init)
+    if(!oneEject){
+      digitalWrite(IO_PUMP, 1);
+      time_t_ejected_start = millis();
+      delay(serverhtml.confEq.result_calib_vol);
+      digitalWrite(IO_PUMP, 0);
+      time_t_ejected = millis()-time_t_ejected_start;
+      Serial.printf("EJETANDO %d - %d\n", time_t_ejected, serverhtml.confEq.result_calib_vol);
+      oneEject = true;
+      timeStart_init = true;
+      time_t_off_flag = false;
+      eject = true;
+    }
+    /*if (!timeStart_init)
     {
       timeStart_init = true;
       time_t_off_flag = false;
       time_t_ejected_start = millis();
-      //Serial.println("EJETANDO");
+      Serial.println("EJETANDO");
       eject = true;
-    }
+    }*/
   }
   else
   {
     if (eject)
     {
-      //Serial.println("EJETANDO_FIM");
-      Serial1.write(ReadSimgle, 7);
-      startReadRF = true;
+      Serial.printf("\n#### EJETANDO_FIM %d, %d #########\n", time_t_ejected, serverhtml.confEq.result_calib_vol);
+      //Serial1.write(ReadSimgle, 7);
+      //startReadRF = true;
       time_t_off_flag = true;
       time_t_off_start = millis();
       time_t_off2_start = millis();
+      enviarAzure = true;
       uint8_t cont = 5;
       bool ledOnOff;
-      digitalWrite(IO_PUMP, 0);
-      while (cont--)
+      //digitalWrite(IO_PUMP, 0);
+      /*while (cont--)
       {
         digitalWrite(IO_externalLED, ledOnOff);
         ledOnOff = !ledOnOff;
         delay(100);
-      }
+      }*/
       if (time_t_ejected < serverhtml.confEq.result_calib_vol)
       {
         //uint16_t totalTime = serverhtml.confEq.result_calib_vol - time_t_ejected;
@@ -691,7 +711,7 @@ void activeEject()
     }
     time_t_ejected = 0;
   }
-  digitalWrite(IO_PUMP, eject);
+  //digitalWrite(IO_PUMP, eject);
 };
 
 void timeCount()
@@ -709,27 +729,43 @@ void timeCount()
   time_t_off2 = millis() - time_t_off2_start;
 };
 
+
+bool desl = false;
+bool teleenv = false;
 void manterLigado()
 {
   if (time_t_off > TIMECUTOFF || time_t_off2 > TIMECUTOFF2)
   {
+    if (!desl){
+      desl = true;
+      Serial.println("DESLIGANDO");
+    }
     digitalWrite(IO_HOLD_UP,0);
   }
   else
   {
     digitalWrite(IO_HOLD_UP,1);
   }
+  if (teleenv && !desl && !send_device_info && time_t_off > 11000)
+  {
+    Serial.printf("DESLIGANDO teleenv %d\n",time_t_off);
+    digitalWrite(IO_HOLD_UP, 0);
+    desl = true;
+  }
 }
 
 void loop()
 {
+  if (waitConfs) {
+    serialRead();
+    return;
+  }
+  serialRead();
   updateSensorValue();
   activeEject();
   timeCount();
-  serial1Read();
   manterLigado();
-  serialRead();
-  
+
   if (WiFi.status() != WL_CONNECTED)
   {
     azure_iot_stop(&azure_iot);
@@ -747,9 +783,13 @@ void loop()
           (void)azure_pnp_send_device_info(&azure_iot, properties_request_id++);
           send_device_info = false; // Only need to send once.
         }
-        else if (azure_pnp_send_telemetry(&azure_iot) != 0) // DENTRO DO ENVIO E VERIFICADO O BOOL <enviarAzure>
+        else
         {
-          LogError("Failed sending telemetry.");
+          if (azure_pnp_send_telemetry(&azure_iot) != 0) // DENTRO DO ENVIO E VERIFICADO O BOOL <enviarAzure>
+            LogError("Failed sending telemetry.");
+          else {
+            teleenv = true;
+          }
         }
         break;
       case azure_iot_error:
@@ -782,11 +822,11 @@ static void sync_device_clock_with_ntp_server()
 
   configTime(GMT_OFFSET_SECS, GMT_OFFSET_SECS_DST, NTP_SERVERS);
   time_t now = time(NULL);
-  int8_t tentat_l = 10;
+  u16_t tentat_l = 10000;
   while (now < UNIX_TIME_NOV_13_2017 && tentat_l--)
   {
-    delay(500);
-    Serial.print(".");
+    delay(100);
+    //Serial.print(".");
     now = time(NULL);
   }
   if(tentat_l<=0) {
@@ -797,7 +837,10 @@ static void sync_device_clock_with_ntp_server()
   timeNTPInit = true;
 }
 
-int8_t tentativas = 10;
+u16_t tentativas = 10000;
+long int timeStart = 0;
+long int timeStart_rest = 0;
+
 static void connect_to_wifi()
 {
   if(noWifiMore) return;
@@ -806,17 +849,25 @@ static void connect_to_wifi()
   //LogInfo("Connecting to WIFI pass %s", serverhtml.confWifi.password);
   //Serial.println(serverhtml.confWifi.password);
 
-  WiFi.mode(WIFI_STA);
-  WiFi.begin(serverhtml.confWifi.ssid, serverhtml.confWifi.password); // serverhtml.confWifi.password
-  if (WiFi.status() != WL_CONNECTED && tentativas--)
-  {
-    delay(1000);
-  }
-  if (tentativas <= 0) {
-    Serial.println("FAIL CONNECT WIFI ");
-    noWifiMore = true;
+  if (timeStart == 0) {
+    WiFi.mode(WIFI_STA);
+    WiFi.begin(serverhtml.confWifi.ssid, serverhtml.confWifi.password); // serverhtml.confWifi.password
+    Serial.printf("Connecting to %s ", serverhtml.confWifi.ssid);
+    timeStart = millis();
   } else {
+    timeStart_rest = millis() - timeStart;
+  }
+
+  if (timeStart_rest > 2000 && WiFi.status() != WL_CONNECTED) {
+    timeStart = 0;
+    timeStart_rest = 0;
+    LogInfo("Connection timed out");
+    return;
+  }
+  if (WiFi.status() == WL_CONNECTED)
+  {
     LogInfo("WiFi connected, IP address: %s", WiFi.localIP().toString().c_str());
+    noWifiMore = true;
   }
 }
 

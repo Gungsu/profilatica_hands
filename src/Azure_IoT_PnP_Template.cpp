@@ -282,7 +282,7 @@ static int generate_telemetry_payload(uint8_t* payload_buffer, size_t payload_bu
     tag_user[cont] = tagRead[cont];
     cont++;
   }
-  
+  sizeStr = tagRead.length();
   az_span text = az_span_create(tag_user, sizeStr);
 
   // Acquiring data from sensors.
